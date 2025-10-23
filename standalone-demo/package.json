@@ -1,0 +1,15 @@
+{
+  "name": "reddit-product-search-demo",
+  "version": "1.0.0",
+  "description": "Standalone demo of Reddit Product Search for Electron",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "install-and-run": "npm install && npm start"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0"
+  }
+}
