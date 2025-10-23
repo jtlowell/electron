@@ -5,6 +5,26 @@ import * as url from 'node:url';
 
 let mainWindow: BrowserWindow | null = null;
 
+// Initialize Reddit IPC handlers
+let redditHandlersInitialized = false;
+function initializeRedditHandlers() {
+  if (redditHandlersInitialized) return;
+
+  try {
+    const { setupRedditIpcHandlers } = require('./reddit-ipc-handler.js');
+    setupRedditIpcHandlers();
+    redditHandlersInitialized = true;
+    console.log('Reddit IPC handlers initialized');
+  } catch (error) {
+    console.error('Failed to initialize Reddit IPC handlers:', error);
+  }
+}
+
+// Initialize on app ready
+app.whenReady().then(() => {
+  initializeRedditHandlers();
+});
+
 // Quit when all windows are closed.
 app.on('window-all-closed', () => {
   app.quit();
@@ -25,6 +45,7 @@ const electronPath = absoluteElectronPath.length < relativeElectronPath.length
   : relativeElectronPath;
 
 const indexPath = path.resolve(app.getAppPath(), 'index.html');
+const redditSearchPath = path.resolve(app.getAppPath(), 'reddit-search.html');
 
 function isTrustedSender (webContents: Electron.WebContents) {
   if (webContents !== (mainWindow && mainWindow.webContents)) {
@@ -32,7 +53,8 @@ function isTrustedSender (webContents: Electron.WebContents) {
   }
 
   try {
-    return url.fileURLToPath(webContents.getURL()) === indexPath;
+    const currentPath = url.fileURLToPath(webContents.getURL());
+    return currentPath === indexPath || currentPath === redditSearchPath;
   } catch {
     return false;
   }
@@ -42,7 +64,7 @@ ipcMain.handle('bootstrap', (event) => {
   return isTrustedSender(event.sender) ? electronPath : null;
 });
 
-async function createWindow (backgroundColor?: string) {
+async function createWindow (backgroundColor?: string, preloadScript?: string) {
   await app.whenReady();
 
   const options: Electron.BrowserWindowConstructorOptions = {
@@ -51,7 +73,7 @@ async function createWindow (backgroundColor?: string) {
     autoHideMenuBar: true,
     backgroundColor,
     webPreferences: {
-      preload: url.fileURLToPath(new URL('preload.js', import.meta.url)),
+      preload: preloadScript || url.fileURLToPath(new URL('preload.js', import.meta.url)),
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false
@@ -97,7 +119,15 @@ export const loadURL = async (appUrl: string) => {
 };
 
 export const loadFile = async (appPath: string) => {
-  mainWindow = await createWindow(appPath === 'index.html' ? '#2f3241' : undefined);
+  // Use reddit-preload for reddit-search.html
+  const preloadScript = appPath === 'reddit-search.html'
+    ? url.fileURLToPath(new URL('reddit-preload.js', import.meta.url))
+    : undefined;
+
+  mainWindow = await createWindow(
+    appPath === 'index.html' ? '#2f3241' : undefined,
+    preloadScript
+  );
   mainWindow.loadFile(appPath);
   mainWindow.focus();
 };
