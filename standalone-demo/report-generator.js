@@ -133,29 +133,84 @@ class ReportGenerator {
   extractProductNames(text) {
     const products = new Set();
 
-    // Pattern 1: Brand + Model
-    const brandModelPattern = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+([A-Z0-9][-A-Z0-9]+)\b/g;
+    // Blacklist of common non-product words
+    const blacklist = new Set([
+      'the', 'that', 'this', 'these', 'those', 'there', 'their', 'them',
+      'what', 'when', 'where', 'which', 'who', 'why', 'how',
+      'with', 'from', 'have', 'been', 'were', 'said', 'will', 'would',
+      'could', 'should', 'about', 'into', 'through', 'during', 'before',
+      'after', 'above', 'below', 'between', 'under', 'again', 'further',
+      'then', 'once', 'here', 'very', 'even', 'back', 'just', 'only',
+      'over', 'some', 'such', 'than', 'most', 'other', 'more', 'also',
+      'well', 'much', 'many', 'good', 'best', 'better', 'great', 'nice',
+      'reddit', 'subreddit', 'post', 'comment', 'user', 'thread', 'link'
+    ]);
+
+    // Pattern 1: Brand + Model with numbers (e.g., "Sony WH-1000XM4", "iPhone 14")
+    const brandModelPattern = /\b([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})?)\s+([A-Z0-9]{2,}[-A-Z0-9]*\d+[-A-Z0-9]*)\b/g;
     let match;
     while ((match = brandModelPattern.exec(text)) !== null) {
-      products.add(match[0]);
+      const candidate = match[0];
+      if (this.isValidProduct(candidate, blacklist)) {
+        products.add(candidate);
+      }
     }
 
-    // Pattern 2: Common product patterns
-    const productPattern = /\b(?:(?:[A-Z][a-z]+)+(?:\s+(?:Pro|Plus|Max|Ultra|Air|Mini|Lite|XL|S|X))?|(?:[A-Z]+\s+\d+(?:\s*[A-Z]+)?)|(?:\d+[A-Z]+\s+\d+))\b/g;
-    while ((match = productPattern.exec(text)) !== null) {
-      products.add(match[0]);
+    // Pattern 2: Product with version suffixes (e.g., "AirPods Pro", "MacBook Air")
+    const suffixPattern = /\b([A-Z][a-z]{2,}(?:[A-Z][a-z]+)*)\s+(Pro|Plus|Max|Ultra|Air|Mini|Lite|XL|Studio|Edition)\b/g;
+    while ((match = suffixPattern.exec(text)) !== null) {
+      const candidate = match[0];
+      if (this.isValidProduct(candidate, blacklist) && candidate.length > 5) {
+        products.add(candidate);
+      }
     }
 
-    // Pattern 3: Quoted products
-    const quotedPattern = /"([^"]+)"/g;
+    // Pattern 3: Model numbers (e.g., "RTX 3080", "MX Keys")
+    const modelPattern = /\b([A-Z]{2,}\s+\d{3,}[A-Z]*|[A-Z]{2,}\s+[A-Z][a-z]+)\b/g;
+    while ((match = modelPattern.exec(text)) !== null) {
+      const candidate = match[0];
+      if (this.isValidProduct(candidate, blacklist) && /\d/.test(candidate)) {
+        products.add(candidate);
+      }
+    }
+
+    // Pattern 4: Quoted products with numbers or known suffixes
+    const quotedPattern = /"([^"]{4,50})"/g;
     while ((match = quotedPattern.exec(text)) !== null) {
       const quoted = match[1].trim();
-      if (/[A-Z0-9]/.test(quoted) && quoted.length < 50) {
+      if ((/\d/.test(quoted) || /(Pro|Plus|Max|Ultra|Air|Mini)/.test(quoted)) &&
+          this.isValidProduct(quoted, blacklist)) {
         products.add(quoted);
       }
     }
 
-    return Array.from(products).filter(p => p.length > 2 && p.length < 100);
+    return Array.from(products).filter(p => {
+      // Additional filtering
+      const lower = p.toLowerCase();
+      return (
+        p.length >= 4 &&
+        p.length < 100 &&
+        !blacklist.has(lower) &&
+        !/^(the|that|this|these|those|what|when|where)/i.test(p) &&
+        // Must have either a number or a product suffix
+        (/\d/.test(p) || /(Pro|Plus|Max|Ultra|Air|Mini|Lite|Studio|Edition)/.test(p))
+      );
+    });
+  }
+
+  isValidProduct(text, blacklist) {
+    const lower = text.toLowerCase();
+    const words = lower.split(/\s+/);
+
+    // Check if any word is in blacklist
+    for (const word of words) {
+      if (blacklist.has(word)) {
+        return false;
+      }
+    }
+
+    // Must have at least one uppercase letter and be long enough
+    return /[A-Z]/.test(text) && text.length >= 4;
   }
 
   extractContextAroundProduct(text, product, contextLength = 100) {
